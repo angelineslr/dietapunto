@@ -110,6 +110,7 @@ function totalDia(entradas) { return (entradas || []).reduce((a, e) => a + (e.p 
 /* Semana (lunes-domingo). La reserva usada cada día la indica el usuario (usos[fecha]); no es automática. */
 function resumenSemana(diario, presupuesto, reserva, fechaRef, usos) {
   usos = usos || {};
+  const pf = typeof presupuesto === 'function' ? presupuesto : () => presupuesto;
   const lunes = lunesDe(fechaRef);
   let usado = 0; const dias = [];
   for (let i = 0; i < 7; i++) {
@@ -117,7 +118,8 @@ function resumenSemana(diario, presupuesto, reserva, fechaRef, usos) {
     const total = totalDia(diario[f]);
     const uso = usos[f] || 0;
     usado += uso;
-    dias.push({ fecha: f, total, uso, capacidad: presupuesto + uso, exceso: Math.max(0, total - presupuesto - uso) });
+    const pr = pf(f);
+    dias.push({ fecha: f, total, uso, presu: pr, capacidad: pr + uso, exceso: Math.max(0, total - pr - uso) });
   }
   return { lunes, reserva, usado, restante: reserva - usado, dias };
 }
@@ -154,9 +156,17 @@ function presupuesto(){var p=S.perfil;
  return null;}
 function reserva(){var r=reservaSemanal(S.perfil.peso);return r==null?0:r;}
 function reservaDe(lunes){var cur=lunesDe(hoy());if(!S.reservas)S.reservas={};if(lunes>=cur)return reserva();return S.reservas[lunes]!=null?S.reservas[lunes]:reserva();}
-function pres0(){var p=presupuesto();return p==null?Infinity:p;}
-function usoDe(f){return Math.max(0,totalDia(S.diario[f])-pres0());}
-function usosSem(){var o={},p=pres0();for(var f in S.diario){var u=totalDia(S.diario[f])-p;if(u>0)o[f]=u;}return o;}
+/* Presupuesto de un día: los días ya pasados conservan el presupuesto que tenían (S.presuDia); hoy y los futuros usan el vigente. */
+function presupuestoDe(f){if(f<hoy()){var s=S.presuDia[f];if(s!=null)return s;}return presupuesto();}
+function pres0(f){var p=presupuestoDe(f);return p==null?Infinity:p;}
+function usoDe(f){return Math.max(0,totalDia(S.diario[f])-pres0(f));}
+function usosSem(){var o={};for(var f in S.diario){var u=totalDia(S.diario[f])-pres0(f);if(u>0)o[f]=u;}return o;}
+/* Fija el presupuesto de los días pasados y la reserva de las semanas pasadas con el valor vigente, ANTES de cambiar peso o datos del perfil. */
+function congelar(){var pr=presupuesto(),t=hoy(),cur=lunesDe(t),rs=reserva(),ch=false;
+ for(var f in S.diario){if(f>=t||totalDia(S.diario[f])<=0)continue;
+  if(pr!=null&&S.presuDia[f]==null){S.presuDia[f]=pr;ch=true;}
+  var l=lunesDe(f);if(rs&&l<cur&&S.reservas[l]==null){S.reservas[l]=rs;ch=true;}}
+ if(ch)save();}
 function fijaReserva(){if(!S.reservas)S.reservas={};var c=lunesDe(hoy());if(S.reservas[c]!==reserva()){S.reservas[c]=reserva();save();}}
 
 /* ---- estado UI ---- */
@@ -166,7 +176,7 @@ var TABS=[['calc','🧮','Calculadora'],['hoy','📅','Hoy'],['ali','🍎','Alim
 var recetaActiva=false;
 
 function render(){
- fijaReserva();
+ congelar();fijaReserva();
  var nav=$('#nav');nav.innerHTML=TABS.map(function(t){return '<button data-t="'+t[0]+'" class="'+(tab===t[0]?'on':'')+'"><b>'+t[1]+'</b>'+t[2]+'</button>';}).join('');
  $('#ttl').textContent=({calc:'Mi presupuesto',hoy:'Hoy',ali:'Alimentos',rec:'Recetas',sem:'Semana',mas:'Mi peso'})[tab];
  var m=$('#main');
@@ -194,7 +204,7 @@ function intro(){var el=modal('<h2>DietaPunto</h2>'+
 '<li><b>Hoy</b>: apunta lo que comes, mira cuántos puntos te quedan y cuánta reserva has usado.</li>'+
 '<li><b>Alimentos</b>: busca en la guía, calcula los puntos con los valores nutricionales o escanea el código de barras. Puedes guardarlos en tu lista.</li>'+
 '<li><b>Semana</b>: histórico de lo consumido; cada lunes empieza una semana nueva y las anteriores quedan guardadas.</li>'+
-'<li><b>Recetas</b>: crea una receta con los ingredientes totales, indica para cuántas raciones y añade al día los puntos de una ración.</li><li><b>Peso</b>: anota tu peso y mira cómo evoluciona.</li></ul></div>'+
+'<li><b>Recetas</b>: crea una receta con los ingredientes totales, indica para cuántas raciones y añade al día los puntos de una ración.</li><li><b>Peso</b>: fija tu peso objetivo, anota tu peso y mira tu progreso. Tus puntos diarios se recalculan con tu peso actual.</li></ul></div>'+
 
 '<button class="b" id="ok">Empezar</button>');
  $('#ok',el).onclick=function(){S.visto=true;save();closeModal();};}
@@ -204,21 +214,23 @@ function vCalc(){var p=S.perfil,pr=presupuesto();
  return '<div class="card"><h2>Calcula tus puntos diarios</h2>'+
  '<label>Sexo</label><select id="sexo"><option value="M"'+(p.sexo==='M'?' selected':'')+'>Mujer</option><option value="H"'+(p.sexo==='H'?' selected':'')+'>Hombre</option></select>'+
  '<div class="row"><div><label>Edad (años)</label><input id="edad" inputmode="numeric" value="'+esc(p.edad)+'"></div><div><label>Altura (cm)</label><input id="altura" inputmode="numeric" value="'+esc(p.altura)+'"></div><div><label>Peso (kg)</label><input id="peso" inputmode="decimal" value="'+esc(p.peso)+'"></div></div>'+
+ '<label>Peso objetivo (kg)</label><input id="pobj0" inputmode="decimal" value="'+esc(p.objetivo)+'" placeholder="el que quieres alcanzar">'+
  '<div id="res" style="text-align:center;margin:16px 0 4px"></div></div>'+
  '<div class="card"><h3 style="margin-top:0">Puntos diarios a mano</h3><input id="presu" inputmode="numeric" value="'+esc(p.presu==null?'':p.presu)+'" placeholder="automático"></div>'+
  '<button class="b" id="go">Ver mi día →</button>';}
 function bCalc(){
- function upd(){var p=S.perfil;p.sexo=$('#sexo').value;p.edad=$('#edad').value;p.altura=$('#altura').value;p.peso=$('#peso').value;
+ function upd(){congelar();var p=S.perfil;p.sexo=$('#sexo').value;p.edad=$('#edad').value;p.altura=$('#altura').value;p.peso=$('#peso').value;p.objetivo=$('#pobj0').value;
   var pv=$('#presu').value.trim();p.presu=pv===''?null:num(pv);save();
   var pr=presupuesto(),r=$('#res');
   if(pr==null)r.innerHTML='<div class="mut">'+(p.sexo==='H'?'Escribe tus puntos diarios a mano.':'Rellena edad, altura y peso.')+'</div>';
   else r.innerHTML='<div class="big">'+pr+'</div><div class="mut">puntos al día</div>'+(reserva()?'<div style="margin-top:10px"><span class="big" style="font-size:30px">'+reserva()+'</span><div class="mut">puntos de reserva semanal</div></div>':'');}
- ['sexo','edad','altura','peso','presu'].forEach(function(i){$('#'+i).addEventListener('input',upd);});
+ ['sexo','edad','altura','peso','presu','pobj0'].forEach(function(i){$('#'+i).addEventListener('input',upd);});
+ $('#peso').addEventListener('change',function(){var k=num(this.value);if(k&&registrarPeso(k))comprobarMeta();});
  upd();$('#go').onclick=function(){tab='hoy';render();};}
 
 /* ---- HOY ---- */
-function vHoy(){var pr=presupuesto();var ent=S.diario[fecha]||[];var tot=totalDia(ent);
- var sem=pr!=null?resumenSemana(S.diario,pr,reservaDe(lunesDe(fecha)),fecha,usosSem()):null;
+function vHoy(){var pr=presupuestoDe(fecha);var ent=S.diario[fecha]||[];var tot=totalDia(ent);
+ var sem=pr!=null?resumenSemana(S.diario,presupuestoDe,reservaDe(lunesDe(fecha)),fecha,usosSem()):null;
  var h='<div class="dnav"><button id="dprev">‹</button><div>'+(fecha===hoy()?'Hoy · ':'')+fechaTxt(fecha)+'</div><button id="dnext">›</button></div>';
  if(pr==null)h+='<div class="warn">Primero calcula tu presupuesto en la pestaña <b>Calculadora</b>.</div>';
  else{var rest=pr-tot,pc=Math.min(100,tot/pr*100);
@@ -262,9 +274,9 @@ function unitOpts(sel){return UNID.map(function(u){return '<option'+(u===sel?' s
 function porcionG(p){var m=/(\d+[.,]?\d*)\s*(kg|g|gr|ml|l)\b/i.exec(String(p||''));if(!m)return null;var v=parseFloat(m[1].replace(',','.')),u=m[2].toLowerCase();if(u==='kg'){v*=1000;u='g';}else if(u==='l'){v*=1000;u='ml';}else if(u==='gr')u='g';return v>0?{v:v,u:u}:null;}
 function lista(m){var rs=S.recetas.map(function(r){return {c:'Mis recetas',s:'',n:r.n,d:'',p:'1 ración (receta de '+fmt(r.rac)+')',pt:ingTotal(r)/racN(r),sa:0,rec:r.id};});
  if(m==='rec')return rs;
- return FOODS.concat(S.propios.map(function(p){return {c:'Mis alimentos',s:'',n:p.n,d:'',p:p.q||'',pt:p.p,sa:0,own:p.id};}));}
+ return FOODS.concat(S.propios.map(function(p){return {c:'Mis alimentos añadidos',s:'',n:p.n,d:'',p:p.q||'',pt:p.p,sa:0,own:p.id};}));}
 function sBuscar(){var s=$('#sub');
- s.innerHTML='<select id="be"><option value="ali"'+(buscaEn==='ali'?' selected':'')+'>Buscar alimentos</option><option value="rec"'+(buscaEn==='rec'?' selected':'')+'>Buscar recetas</option></select><div style="height:8px"></div><input id="q" type="search" placeholder="'+(buscaEn==='rec'?'Buscar receta…':'Buscar alimento…')+'" value="'+esc(busq)+'" autocomplete="off"><div style="height:8px"></div>'+(buscaEn==='rec'?'':'<select id="cs"><option value="">Todas las categorías</option>'+(S.propios.length?'<option value="Mis alimentos"'+(catSel==='Mis alimentos'?' selected':'')+'>⭐ Mis alimentos</option>':'')+cats.map(function(c){return '<option'+(c===catSel?' selected':'')+'>'+esc(c)+'</option>';}).join('')+'</select>')+'<div class="card" style="margin-top:10px" id="rs"></div>';
+ s.innerHTML='<select id="be"><option value="ali"'+(buscaEn==='ali'?' selected':'')+'>Buscar alimentos</option><option value="rec"'+(buscaEn==='rec'?' selected':'')+'>Buscar recetas</option></select><div style="height:8px"></div><input id="q" type="search" placeholder="'+(buscaEn==='rec'?'Buscar receta…':'Buscar alimento…')+'" value="'+esc(busq)+'" autocomplete="off"><div style="height:8px"></div>'+(buscaEn==='rec'?'':'<select id="cs"><option value="">Todas las categorías</option>'+'<option value="Mis alimentos añadidos"'+(catSel==='Mis alimentos añadidos'?' selected':'')+'>⭐ Mis alimentos añadidos</option>'+cats.map(function(c){return '<option'+(c===catSel?' selected':'')+'>'+esc(c)+'</option>';}).join('')+'</select>')+'<div class="card" style="margin-top:10px" id="rs"></div>';
  function go(){busq=$('#q').value;catSel=buscaEn==='rec'?'':$('#cs').value;var L=lista(buscaEn),t=sinAcentos(busq).split(/\s+/).filter(Boolean);
   var r=L.filter(function(f){if(catSel&&f.c!==catSel)return false;var h=sinAcentos(f.n+' '+f.d+' '+f.s+' '+f.p+' '+f.c);return t.every(function(w){return h.indexOf(w)>=0;});});
   var tot=r.length;r=r.slice(0,80);
@@ -280,7 +292,7 @@ function detalle(f){
  '<div class="row" style="margin:12px 0"><div class="big" id="pp">'+fmt(f.pt)+'</div><div class="auto mut">puntos</div></div>'+
  '<button class="b" id="oka">'+(recetaActiva?'Añadir a la receta':'Añadir al día')+'</button>'+
  (f.sa?'<div style="height:8px"></div><button class="b sec" id="oks">Añadir “a saciedad” (0 puntos)</button>':'')+
- (f.own?'<div style="height:8px"></div><button class="b red" id="rm">Quitar de mi lista</button>':''));
+ (f.own?'<label>Nombre</label><div class="row"><input id="rnm" value="'+esc(f.n)+'"><button class="b sec auto" id="rnb" style="width:auto">Guardar nombre</button></div><div style="height:8px"></div><button class="b red" id="rm">Quitar de Mis alimentos añadidos</button>':''));
  function q(){return num($('#mq',el).value)||0;}
  function pts(){return modo==='g'?f.pt*q()/pg.v:f.pt*q();}
  function qt(){return modo==='g'?fmt(q())+' '+pg.u:(q()!==1?fmt(q())+' × ':'')+f.p;}
@@ -292,6 +304,7 @@ function detalle(f){
   $('#mq',el).value=modo==='g'?pg.v:1;$('#ql',el).textContent=modo==='g'?(pg.u==='ml'?'Cantidad (ml)':'Cantidad (g)'):'Número de raciones';upd();};
  $('#oka',el).onclick=function(){pickDay(f.n+(f.d?' · '+f.d:''),pts(),qt());};
  var o=$('#oks',el);if(o)o.onclick=function(){pickDay(f.n+' (a saciedad)',0,f.p+' · a saciedad');};
+ var rb=$('#rnb',el);if(rb)rb.onclick=function(){var n=$('#rnm',el).value.trim();if(!n)return;S.propios.forEach(function(x){if(x.id===f.own)x.n=n;});save();closeModal();render();toast('Nombre guardado ✓');};
  var r=$('#rm',el);if(r)r.onclick=function(){S.propios=S.propios.filter(function(x){return x.id!==f.own;});save();closeModal();render();};}
 
 /* Calcular */
@@ -302,7 +315,7 @@ function sCalc(){$('#sub').innerHTML='<div class="card"><h2>Calcular puntos de u
  '<div class="row"><div><label>Grasas (g)</label><input id="cg" inputmode="decimal"></div><div><label>Fibra (g)</label><input id="cf" inputmode="decimal"></div></div>'+
  '<label>Cantidad que vas a usar</label><div class="row"><input id="cx" inputmode="decimal" value="100"><div class="auto mut" id="cul">g</div></div>'+
  '<div style="text-align:center;margin:14px 0 6px"><div class="big" id="cr">0</div><div class="mut">puntos</div></div>'+
- '<button class="b" id="ca">'+(recetaActiva?'Añadir a la receta':'Añadir al día')+'</button><div style="height:8px"></div><button class="b sec" id="cs2">⭐ Guardar en mi lista</button></div>';
+ '<button class="b" id="ca">'+(recetaActiva?'Añadir a la receta':'Añadir al día')+'</button><div style="height:8px"></div><button class="b sec" id="cs2">⭐ Guardar en Mis alimentos añadidos</button></div>';
  var tocado=false;
  function ref(){return num($('#cr0').value)||0;}
  function val(){var r=ref(),k=r>0?(num($('#cx').value)||0)/r:0;return puntosNutrientes({p:(num($('#cp').value)||0)*k,h:(num($('#ch').value)||0)*k,g:(num($('#cg').value)||0)*k,f:(num($('#cf').value)||0)*k});}
@@ -314,7 +327,7 @@ function sCalc(){$('#sub').innerHTML='<div class="card"><h2>Calcular puntos de u
  function nm(){return $('#cn').value.trim()||'Alimento calculado';}
  function qt(){return fmt(num($('#cx').value)||0)+' '+$('#cu').value;}
  $('#ca').onclick=function(){pickDay(nm(),val(),qt());};
- $('#cs2').onclick=function(){S.propios.push({id:uid(),n:nm(),p:val(),q:qt()});save();toast('Guardado en tu lista ⭐');};}
+ $('#cs2').onclick=function(){S.propios.push({id:uid(),n:nm(),p:val(),q:qt()});save();toast('Guardado en Mis alimentos añadidos ⭐');};}
 
 /* Escáner */
 function gray(im){var d=im.data,g=new Uint8ClampedArray(im.width*im.height);for(var i=0;i<g.length;i++)g[i]=(d[4*i]*299+d[4*i+1]*587+d[4*i+2]*114)/1000;return g;}
@@ -369,51 +382,122 @@ function sScan(){var s=$('#sub');
    producto(pr,c,vacio);}).catch(function(){R.innerHTML='<div class="card"><b>Sin conexión</b><div class="mut small">Hace falta conexión a internet.</div></div>';});}
  function gramos(t){var m=/(\d+[.,]?\d*)\s*(g|gr|ml)\b/i.exec(String(t||''));return m?parseFloat(m[1].replace(',','.')):0;}
  function producto(pr,c,manual){var R=$('#sres'),u0=pr.u||'g',ref0=pr.ref||100;
-  R.innerHTML='<div class="card"><h2>'+esc(pr.n)+'</h2>'+(manual?'<div class="warn">Este producto no tiene datos nutricionales en la base de datos. Escríbelos de la etiqueta.</div>':'')+
+  R.innerHTML='<div class="card"><label style="margin-top:0">Nombre (puedes cambiarlo para reconocerlo)</label><input id="pn" value="'+esc(pr.n)+'">'+(manual?'<div class="warn">Este producto no tiene datos nutricionales en la base de datos. Escríbelos de la etiqueta.</div>':'')+
   '<label>Datos nutricionales referidos a</label><div class="row"><input id="rf" inputmode="decimal" value="'+ref0+'"><select id="ru">'+unitOpts(u0)+'</select></div>'+
   '<div class="row"><div><label>Prot. (g)</label><input id="n1" inputmode="decimal" value="'+pr.p100.p+'"></div><div><label>Hidr. (g)</label><input id="n2" inputmode="decimal" value="'+pr.p100.h+'"></div><div><label>Grasa (g)</label><input id="n3" inputmode="decimal" value="'+pr.p100.g+'"></div><div><label>Fibra (g)</label><input id="n4" inputmode="decimal" value="'+pr.p100.f+'"></div></div>'+
   '<label>Cantidad que vas a usar'+(pr.ser?' (ración indicada: '+esc(pr.ser)+')':'')+'</label><div class="row"><input id="gr" inputmode="decimal" value="'+(gramos(pr.ser)||ref0)+'"><div class="auto mut" id="gu">'+u0+'</div></div>'+
   '<div style="text-align:center;margin:12px 0 4px"><div class="big" id="pp2">0</div><div class="mut">puntos</div></div>'+
-  '<button class="b" id="pa">'+(recetaActiva?'Añadir a la receta':'Añadir al día')+'</button><div style="height:8px"></div><button class="b sec" id="ps">⭐ Guardar en mi lista</button></div>';
+  '<button class="b" id="pa">'+(recetaActiva?'Añadir a la receta':'Añadir al día')+'</button><div style="height:8px"></div><button class="b sec" id="ps">⭐ Guardar en Mis alimentos añadidos</button></div>';
   function v(i){return num($('#'+i).value)||0;}
   function pts(){var r=v('rf'),k=r>0?v('gr')/r:0;return puntosNutrientes({p:v('n1')*k,h:v('n2')*k,g:v('n3')*k,f:v('n4')*k});}
   function upd(){$('#pp2').textContent=pts();$('#gu').textContent=$('#ru').value;}['n1','n2','n3','n4','gr','rf'].forEach(function(i){$('#'+i).addEventListener('input',upd);});$('#ru').addEventListener('change',upd);upd();
-  function guarda(){if(v('n1')||v('n2')||v('n3')||v('n4')){S.codigos[c]={n:pr.n,ser:pr.ser,u:$('#ru').value,ref:v('rf')||100,p100:{p:v('n1'),h:v('n2'),g:v('n3'),f:v('n4')}};save();}}
+  function nom(){return $('#pn').value.trim()||pr.n;}
+  function guarda(){if(v('n1')||v('n2')||v('n3')||v('n4')){S.codigos[c]={n:nom(),ser:pr.ser,u:$('#ru').value,ref:v('rf')||100,p100:{p:v('n1'),h:v('n2'),g:v('n3'),f:v('n4')}};save();}}
   function qt(){return fmt(v('gr'))+' '+$('#ru').value;}
-  $('#pa').onclick=function(){guarda();pickDay(pr.n,pts(),qt());};
-  $('#ps').onclick=function(){guarda();S.propios.push({id:uid(),n:pr.n,p:pts(),q:qt()});save();toast('Guardado en tu lista ⭐');};}
+  $('#pa').onclick=function(){guarda();pickDay(nom(),pts(),qt());};
+  $('#ps').onclick=function(){guarda();S.propios.push({id:uid(),n:nom(),p:pts(),q:qt()});save();toast('Guardado en Mis alimentos añadidos ⭐');};}
 }
 
 /* ---- SEMANA ---- */
 function vSem(){var pr=presupuesto();if(pr==null)return '<div class="warn">Primero calcula tu presupuesto en la pestaña <b>Calculadora</b>.</div>';
- var r=resumenSemana(S.diario,pr,reservaDe(lunesDe(semRef)),semRef,usosSem()),max=Math.max(pr*1.3,1);r.dias.forEach(function(d){max=Math.max(max,d.total);});
+ var r=resumenSemana(S.diario,presupuestoDe,reservaDe(lunesDe(semRef)),semRef,usosSem()),max=Math.max(pr*1.3,1);r.dias.forEach(function(d){max=Math.max(max,d.total,d.presu*1.3);});
  var esActual=r.lunes===lunesDe(hoy());
  var h='<div class="dnav"><button id="wprev">‹</button><div>'+(esActual?'Esta semana · ':'')+fechaTxt(r.lunes)+' – '+fechaTxt(addDays(r.lunes,6))+'</div><button id="wnext">›</button></div>';
  var tot=r.dias.reduce(function(a,d){return a+d.total;},0);
  h+='<div class="card"><div class="row"><div><div class="mut small">Total semana</div><b style="font-size:26px">'+fmt(tot)+'</b></div><div style="text-align:right"><div class="mut small">Reserva usada</div><b style="font-size:26px;color:'+(r.restante<0?'var(--warn)':'var(--g)')+'">'+fmt(r.usado)+'</b> / '+r.reserva+'</div></div>'+
- '<div class="bars">'+r.dias.map(function(d){var hh=d.total/max*100;return '<div><span>'+(d.total?fmt(d.total):'')+'</span><i class="'+(d.total>pr?'o':'')+'" style="height:'+hh+'%"></i></div>';}).join('')+'</div>'+
+ '<div class="bars">'+r.dias.map(function(d){var hh=d.total/max*100;return '<div><span>'+(d.total?fmt(d.total):'')+'</span><i class="'+(d.total>d.presu?'o':'')+'" style="height:'+hh+'%"></i></div>';}).join('')+'</div>'+
  '<div class="bars" style="height:auto;margin:0">'+r.dias.map(function(d,i){return '<div style="height:auto">'+DIAS[i]+'</div>';}).join('')+'</div>'+
  '</div>';
  h+='<div class="card"><h2>Detalle por días</h2>'+r.dias.map(function(d){return '<div class="li"><div class="t"><div>'+fechaTxt(d.fecha)+'</div>'+(d.uso?'<div class="small" style="color:var(--amb)">Reserva: '+fmt(d.uso)+'</div>':'')+'</div><div class="pts">'+fmt(d.total)+'</div></div>';}).join('')+'</div>';
  var ws={};Object.keys(S.diario).forEach(function(f){if(totalDia(S.diario[f])>0)ws[lunesDe(f)]=1;});
  var L=Object.keys(ws).sort().reverse().slice(0,12);
- if(L.length)h+='<div class="card"><h2>Semanas anteriores</h2>'+L.map(function(l){var rr=resumenSemana(S.diario,pr,reservaDe(l),l,usosSem()),t=rr.dias.reduce(function(a,d){return a+d.total;},0);return '<div class="li" data-w="'+l+'" style="cursor:pointer"><div class="t"><div>'+fechaTxt(l)+' – '+fechaTxt(addDays(l,6))+'</div><div class="mut small">Reserva usada '+fmt(rr.usado)+' de '+rr.reserva+'</div></div><div class="pts">'+fmt(t)+'</div></div>';}).join('')+'</div>';
+ if(L.length)h+='<div class="card"><h2>Semanas anteriores</h2>'+L.map(function(l){var rr=resumenSemana(S.diario,presupuestoDe,reservaDe(l),l,usosSem()),t=rr.dias.reduce(function(a,d){return a+d.total;},0);return '<div class="li" data-w="'+l+'" style="cursor:pointer"><div class="t"><div>'+fechaTxt(l)+' – '+fechaTxt(addDays(l,6))+'</div><div class="mut small">Reserva usada '+fmt(rr.usado)+' de '+rr.reserva+'</div></div><div class="pts">'+fmt(t)+'</div></div>';}).join('')+'</div>';
  return h;}
 function bSem(){var a=$('#wprev');if(!a)return;a.onclick=function(){semRef=addDays(semRef,-7);render();};$('#wnext').onclick=function(){semRef=addDays(semRef,7);render();};
  $('#main').onclick=function(e){var l=e.target.closest('[data-w]');if(l){semRef=l.dataset.w;render();window.scrollTo(0,0);}};}
 
-/* ---- MÁS ---- */
-function vMas(){return '<div class="card"><h2>Mi peso</h2><div id="pl"></div><div class="row"><input id="pw" inputmode="decimal" placeholder="kg"><button class="b auto" id="pa2" style="width:auto">Anotar hoy</button></div></div>'+
+/* ---- PESO Y OBJETIVO ---- */
+function pesosOrd(){return S.pesos.slice().sort(function(a,b){return a.f<b.f?-1:1;});}
+function pesoIni(){var v=num(S.perfil.pesoInicial);if(v!=null)return v;var P=pesosOrd();return P.length?P[0].k:null;}
+function progreso(){
+ var p=S.perfil,ini=pesoIni(),act=num(p.peso),obj=num(p.objetivo),io=num(p.inicioObj);if(io==null)io=ini;
+ var r={ini:ini,act:act,obj:obj,perdidos:null,pend:null,pct:null,valido:false,lograda:false};
+ if(ini!=null&&act!=null)r.perdidos=Math.round((ini-act)*10)/10;
+ if(act!=null&&obj!=null&&obj>0){
+  r.pend=Math.max(0,Math.round((act-obj)*10)/10);
+  r.valido=io!=null&&io>obj;
+  if(r.valido){r.lograda=act<=obj;r.pct=r.lograda?100:Math.max(0,Math.min(100,Math.round((io-act)/(io-obj)*100)));}
+ }
+ return r;}
+/* Anota el peso de hoy: congela lo pasado, actualiza el perfil (y con él presupuesto y reserva). No toca alimentos ni consumos. */
+function registrarPeso(k){
+ if(!k||k<25||k>400)return false;
+ congelar();
+ if(S.perfil.pesoInicial==null){var P0=pesosOrd();S.perfil.pesoInicial=P0.length?P0[0].k:k;}
+ var f=hoy();S.pesos=S.pesos.filter(function(x){return x.f!==f;});S.pesos.push({f:f,k:k});
+ S.perfil.peso=String(k);
+ save();return true;}
+function comprobarMeta(){var g=progreso();
+ if(g.lograda&&S.perfil.modo!=='mant'&&S.perfil.avisoObj!==String(S.perfil.objetivo)){S.perfil.avisoObj=String(S.perfil.objetivo);save();metaModal();}}
+function metaModal(){var el=modal('<h2>🎉 ¡Objetivo conseguido!</h2><p style="margin:6px 0 14px">Has llegado a tu peso objetivo ('+fmt(num(S.perfil.objetivo))+' kg). Tú decides cómo seguir.</p>'+
+ '<button class="b" id="mn">Fijar un nuevo objetivo</button><div style="height:8px"></div><button class="b sec" id="mm">Pasar a mantenimiento</button><div style="height:8px"></div><button class="b sec" id="ml">Decidir más tarde</button>',true);
+ $('#mn',el).onclick=function(){nuevoObjModal();};
+ $('#mm',el).onclick=function(){S.perfil.modo='mant';save();closeModal();render();};
+ $('#ml',el).onclick=function(){closeModal();};}
+function nuevoObjModal(){var el=modal('<h2>Nuevo objetivo</h2><label style="margin-top:0">Peso objetivo (kg)</label><input id="no" inputmode="decimal"><div style="height:12px"></div><button class="b" id="nok">Guardar objetivo</button>',true);
+ $('#nok',el).onclick=function(){var v=num($('#no',el).value),a=num(S.perfil.peso);
+  if(!v||v<25||(a!=null&&v>=a)){toast('Tiene que ser menor que tu peso actual');return;}
+  S.perfil.objetivo=String(v);S.perfil.inicioObj=String(a);S.perfil.modo='perdida';S.perfil.avisoObj=null;save();closeModal();render();};}
+function migrar(){var p=S.perfil;
+ if(p.objetivo==null)p.objetivo='';if(p.pesoInicial===undefined)p.pesoInicial=null;if(p.inicioObj===undefined)p.inicioObj=null;
+ if(!p.modo)p.modo='perdida';if(p.avisoObj===undefined)p.avisoObj=null;
+ if(!S.presuDia)S.presuDia={};if(!S.reservas)S.reservas={};
+ if(p.pesoInicial==null){var P=pesosOrd();if(P.length)p.pesoInicial=P[0].k;else if(num(p.peso))p.pesoInicial=num(p.peso);}
+ congelar();save();}
+
+function grafica(P,obj){if(!P.length)return '';
+ var W=320,H=150,L=38,R=10,T=10,B=24,vals=P.map(function(x){return x.k;}),hayObj=obj!=null&&obj>0;
+ if(hayObj)vals.push(obj);
+ var mn=Math.floor(Math.min.apply(0,vals)-1),mx=Math.ceil(Math.max.apply(0,vals)+1);
+ var t0=parseYmd(P[0].f).getTime(),t1=parseYmd(P[P.length-1].f).getTime();
+ function X(f){return t1>t0?L+(parseYmd(f).getTime()-t0)/(t1-t0)*(W-L-R):L+(W-L-R)/2;}
+ function Y(v){return T+(mx-v)/(mx-mn)*(H-T-B);}
+ var s='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;margin-bottom:8px">';
+ [mx,(mx+mn)/2,mn].forEach(function(v){var y=Y(v).toFixed(1);s+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y+'" y2="'+y+'" stroke="#e3dfd6"/><text x="'+(L-4)+'" y="'+(+y+4)+'" font-size="10" fill="#66736f" text-anchor="end">'+fmt(v)+'</text>';});
+ if(hayObj){var yo=Y(obj).toFixed(1);s+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+yo+'" y2="'+yo+'" stroke="#d99a1e" stroke-width="1.5" stroke-dasharray="5 4"/><text x="'+(W-R)+'" y="'+(yo-4)+'" font-size="10" fill="#b57d10" text-anchor="end">Objetivo '+fmt(obj)+'</text>';}
+ if(P.length>1)s+='<polyline points="'+P.map(function(x){return X(x.f).toFixed(1)+','+Y(x.k).toFixed(1);}).join(' ')+'" fill="none" stroke="#2f7d6b" stroke-width="2.5"/>';
+ P.forEach(function(x){s+='<circle cx="'+X(x.f).toFixed(1)+'" cy="'+Y(x.k).toFixed(1)+'" r="3.5" fill="#2f7d6b"/>';});
+ s+='<text x="'+L+'" y="'+(H-6)+'" font-size="10" fill="#66736f">'+fechaTxt(P[0].f)+'</text>';
+ if(P.length>1)s+='<text x="'+(W-R)+'" y="'+(H-6)+'" font-size="10" fill="#66736f" text-anchor="end">'+fechaTxt(P[P.length-1].f)+'</text>';
+ return s+'</svg>';}
+
+function objHtml(){var g=progreso(),mant=S.perfil.modo==='mant',h='';
+ function li(a,b){return '<div class="li"><div class="t">'+a+'</div><div class="pts">'+b+'</div></div>';}
+ function kg(v){return v==null?'–':fmt(v)+' kg';}
+ h+=li('Peso inicial',kg(g.ini))+li('Peso actual',kg(g.act))+li(mant?'Peso de mantenimiento':'Peso objetivo',kg(g.obj));
+ h+=li(g.perdidos!=null&&g.perdidos<0?'Kg ganados':'Kg perdidos',g.perdidos==null?'–':fmt(Math.abs(g.perdidos))+' kg');
+ if(!mant){
+  h+=li('Kg pendientes',g.pend==null?'–':fmt(g.pend)+' kg');
+  if(g.pct!=null)h+='<div style="margin-top:10px"><div class="row"><div class="mut small">Progreso hacia el objetivo</div><div style="text-align:right"><b>'+g.pct+' %</b></div></div><div class="bar" style="margin-top:4px"><i style="width:'+g.pct+'%"></i></div></div>';
+  else h+='<div class="mut small" style="margin-top:8px">'+(g.obj==null?'Escribe tu peso objetivo para ver tu progreso.':'El peso objetivo tiene que ser menor que el peso desde el que partes.')+'</div>';
+  if(g.lograda)h+='<div class="warn" style="background:#e3f1ed;border-color:#b9dcd2">🎉 <b>¡Objetivo conseguido!</b><div style="height:6px"></div><button class="b sm" id="bmeta">Qué hago ahora</button></div>';
+ }else h+='<div class="mut small" style="margin-top:8px">Fase de mantenimiento. Tus puntos diarios se siguen calculando con tu peso actual.</div><div style="height:8px"></div><button class="b sm sec" id="bnuevo">Fijar un nuevo objetivo de pérdida</button>';
+ return h;}
+
+/* ---- MÁS (pestaña Peso) ---- */
+function vMas(){return '<div class="card"><h2>Mi objetivo</h2><label style="margin-top:0">'+(S.perfil.modo==='mant'?'Peso de mantenimiento (kg)':'Peso objetivo (kg)')+'</label><input id="pobj" inputmode="decimal" value="'+esc(S.perfil.objetivo)+'" placeholder="kg"><div id="objres" style="margin-top:6px">'+objHtml()+'</div></div>'+
+ '<div class="card"><h2>Mi peso</h2><div id="pl"></div><div class="row"><input id="pw" inputmode="decimal" placeholder="kg"><button class="b auto" id="pa2" style="width:auto">Anotar hoy</button></div></div>'+
  '<div class="mut small" style="text-align:center">DietaPunto · Productos: Open Food Facts (ODbL)</div>';}
 function bMas(){
- function peso(){var P=S.pesos.slice().sort(function(a,b){return a.f<b.f?-1:1;});var h='';
-  if(P.length>1){var w=P.map(function(x){return x.k;}),mn=Math.min.apply(0,w)-1,mx=Math.max.apply(0,w)+1,W=300,H=90;
-   var pts=P.map(function(x,i){return (i/(P.length-1)*(W-20)+10).toFixed(1)+','+(H-8-(x.k-mn)/(mx-mn)*(H-16)).toFixed(1);}).join(' ');
-   h+='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%"><polyline points="'+pts+'" fill="none" stroke="#2f7d6b" stroke-width="2.5"/></svg>';}
+ function peso(){var P=pesosOrd(),h=grafica(P,num(S.perfil.objetivo));
   h+=P.slice(-6).reverse().map(function(x){return '<div class="li"><div class="t">'+fechaTxt(x.f)+'</div><div class="pts">'+fmt(x.k)+' kg</div><button class="x" data-pd="'+x.f+'">✕</button></div>';}).join('')||'<div class="mut small">Sin registros.</div>';
   $('#pl').innerHTML=h;}
- peso();$('#pl').onclick=function(e){var d=e.target.closest('[data-pd]');if(d){S.pesos=S.pesos.filter(function(x){return x.f!==d.dataset.pd;});save();peso();}};
- $('#pa2').onclick=function(){var k=num($('#pw').value);if(!k)return;S.pesos=S.pesos.filter(function(x){return x.f!==hoy();});S.pesos.push({f:hoy(),k:k});S.perfil.peso=String(k);save();$('#pw').value='';peso();toast('Anotado ✓');};
+ function updObj(){$('#objres').innerHTML=objHtml();}
+ $('#pobj').oninput=function(){S.perfil.objetivo=this.value;save();updObj();peso();};
+ $('#objres').onclick=function(e){var b=e.target.closest('button');if(!b)return;if(b.id==='bmeta')metaModal();else if(b.id==='bnuevo')nuevoObjModal();};
+ peso();
+ $('#pl').onclick=function(e){var d=e.target.closest('[data-pd]');if(d){congelar();S.pesos=S.pesos.filter(function(x){return x.f!==d.dataset.pd;});var P=pesosOrd();if(P.length)S.perfil.peso=String(P[P.length-1].k);save();peso();updObj();}};
+ $('#pa2').onclick=function(){var k=num($('#pw').value);if(!k)return;if(!registrarPeso(k)){toast('Escribe un peso válido (kg)');return;}$('#pw').value='';peso();updObj();toast('Anotado ✓');comprobarMeta();};
 }
 
 /* ---- RECETAS ---- */
@@ -450,7 +534,7 @@ function bRec(){var b=S.borrador;
  $('#rx').onclick=function(){if(b.existente)S.recetas=S.recetas.filter(function(x){return x.id!==b.id;});S.borrador=null;save();render();};
  var rc=$('#rc');if(rc)rc.onclick=function(){S.borrador=null;save();render();};}
 
-render();if(!S.visto)intro();
+migrar();render();if(!S.visto)intro();
 if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){try{navigator.serviceWorker.register('sw.js').catch(function(){});}catch(e){}}
 window.__app={S:function(){return S;},render:render};
 })();
