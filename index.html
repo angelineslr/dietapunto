@@ -238,7 +238,7 @@ function intro(){var el=modal('<h2>DietaPunto</h2>'+
 '<div class="card"><h3 style="margin-top:0">Cómo funciona la reserva semanal</h3><p style="margin:6px 0">Es una cantidad de puntos extra (35 hasta 70 kg, 42 hasta 80 kg, 49 por encima) que usas cuando quieras para sumar a tu presupuesto diario. Puedes gastarla toda en un día, repartirla entre varios o no usarla; se descuenta sola cuando te pasas de tus puntos diarios.</p><p style="margin:6px 0"><b>Ejemplo:</b> con 29 puntos diarios y 42 de reserva, si un día usas 10 de reserva puedes consumir hasta 39; si usas los 42, hasta 71. Al día siguiente vuelves a tus 29 y la reserva conserva solo lo que no hayas usado.</p><ul class="l"><li>La reserva no se reparte entre los siete días: solo baja cuando un día te pasas de tus puntos diarios.</li><li>Lo que no uses no pasa a la semana siguiente.</li><li>Los puntos diarios que no consumas no se guardan ni se suman a la reserva.</li></ul></div>'+
 '<div class="card"><h3 style="margin-top:0">Cómo usar la app</h3><ul class="l">'+
 '<li><b>Calculadora</b>: pon tu edad, altura y peso y verás tus puntos diarios.</li>'+
-'<li><b>Hoy</b>: apunta lo que comes, mira cuántos puntos te quedan y cuánta reserva has usado. Si haces ejercicio, anótalo: sus puntos se suman a los de ese día y se gastan antes que la reserva.</li>'+
+'<li><b>Hoy</b>: apunta lo que comes, mira cuántos puntos te quedan y cuánta reserva has usado. Si haces ejercicio, anótalo: puedes sumar sus puntos a los de ese día o dejarlos sin sumar, y se gastan antes que la reserva.</li>'+
 '<li><b>Alimentos</b>: busca en la guía, calcula los puntos con los valores nutricionales o escanea el código de barras. Puedes guardarlos en tu lista.</li>'+
 '<li><b>Semana</b>: histórico de lo consumido; cada lunes empieza una semana nueva y las anteriores quedan guardadas.</li>'+
 '<li><b>Recetas</b>: crea una receta con los ingredientes totales, indica para cuántas raciones y añade al día los puntos de una ración.</li><li><b>Peso</b>: fija tu peso objetivo, anota tu peso y mira tu progreso. Tus puntos diarios se recalculan con tu peso actual.</li></ul></div>'+
@@ -283,7 +283,8 @@ function vHoy(){var pr=presupuestoDe(fecha);var ent=S.diario[fecha]||[];var tot=
  return h;}
 function bHoy(){
  $('#dprev').onclick=function(){fecha=addDays(fecha,-1);render();};$('#dnext').onclick=function(){fecha=addDays(fecha,1);render();};
- $('#main').onclick=function(e){var a=e.target.closest('[data-add]'),d=e.target.closest('[data-del]'),aa=e.target.closest('[data-actadd]'),ax=e.target.closest('[data-actdel]');
+ $('#main').onclick=function(e){var a=e.target.closest('[data-add]'),d=e.target.closest('[data-del]'),aa=e.target.closest('[data-actadd]'),ax=e.target.closest('[data-actdel]'),at=e.target.closest('[data-acttog]');
+  if(at){var L=S.actividad[fecha]||[];L.forEach(function(x){if(x.id===at.dataset.acttog)x.s=x.s===0?1:0;});save();render();return;}
   if(aa){actModal();return;}
   if(ax){S.actividad[fecha]=(S.actividad[fecha]||[]).filter(function(x){return x.id!==ax.dataset.actdel;});save();render();return;}
   if(a){meal=a.dataset.add;tab='ali';alSeg='buscar';render();window.scrollTo(0,0);}
@@ -459,12 +460,14 @@ function bSem(){var a=$('#wprev');if(!a)return;a.onclick=function(){semRef=addDa
 /* ---- ACTIVIDAD ---- */
 var DEPORTES=['Caminar','Ciclismo','Natación','Correr','Musculación','Pilates / Yoga','Baile / Aeróbic','Senderismo','Otra'];
 var INTENS=[['B','Suave','Respiras casi con normalidad; puedes hablar y cantar.'],['M','Moderada','Respiración más profunda; puedes hablar, pero te cuesta cantar.'],['A','Alta','Respiración rápida y profunda; solo puedes hablar en frases cortas.']];
-function actDia(f){return (S.actividad[f]||[]).reduce(function(a,e){return a+e.p;},0);}
+function actDia(f){return (S.actividad[f]||[]).reduce(function(a,e){return a+(e.s===0?0:e.p);},0);}
+function actGanada(f){return (S.actividad[f]||[]).reduce(function(a,e){return a+e.p;},0);}
 function actMap(){var o={};for(var f in S.actividad){var t=actDia(f);if(t)o[f]=t;}return o;}
-function actCard(){var ent=S.actividad[fecha]||[],t=actDia(fecha);
+function actCard(){var ent=S.actividad[fecha]||[],t=actDia(fecha),g=actGanada(fecha);
  var h='<div class="card"><div class="row" style="margin-bottom:2px"><h2 style="margin:0">Actividad'+(t?' <span class="pill">+'+fmt(t)+'</span>':'')+'</h2><button class="b sm sec auto" data-actadd="1">+ Añadir</button></div>';
- h+=ent.map(function(e){return '<div class="li"><div class="t"><div>'+esc(e.n)+'</div><div class="mut small">'+fmt(e.m)+' min · '+({B:'suave',M:'moderada',A:'alta'})[e.i]+'</div></div><div class="pts">+'+fmt(e.p)+'</div><button class="x" data-actdel="'+e.id+'">✕</button></div>';}).join('');
+ h+=ent.map(function(e){var on=e.s!==0;return '<div class="li"><div class="t"><div>'+esc(e.n)+'</div><div class="mut small">'+fmt(e.m)+' min · '+({B:'suave',M:'moderada',A:'alta'})[e.i]+'</div></div><div class="pts"'+(on?'':' style="opacity:.45"')+'>+'+fmt(e.p)+'</div><button class="b sm '+(on?'':'sec')+' auto" data-acttog="'+e.id+'" style="width:auto">'+(on?'✓ Suma':'No suma')+'</button><button class="x" data-actdel="'+e.id+'">✕</button></div>';}).join('');
  if(!ent.length)h+='<div class="mut small">Sin actividad este día</div>';
+ else if(g!==t)h+='<div class="mut small" style="margin-top:6px">Ganados '+fmt(g)+' · sumados a tus puntos '+fmt(t)+'</div>';
  return h+'</div>';}
 function actModal(){var kg=num(S.perfil.peso),dep=DEPORTES[0],inten='M';
  var el=modal('<h2>Añadir actividad</h2><div class="mut small">'+fechaTxt(fecha)+(kg?' · con tu peso de '+fmt(kg)+' kg':'')+'</div>'+
@@ -474,7 +477,8 @@ function actModal(){var kg=num(S.perfil.peso),dep=DEPORTES[0],inten='M';
   '<label>Minutos</label><input id="am" inputmode="numeric" value="30">'+
   '<label>Intensidad</label><div class="chips" id="ai">'+INTENS.map(function(x){return '<button data-i="'+x[0]+'" class="'+(x[0]==='M'?'on':'')+'">'+x[1]+'</button>';}).join('')+'</div><div class="mut small" id="aid" style="margin-top:6px">'+INTENS[1][2]+'</div>'+
   '<div style="text-align:center;margin:14px 0 6px"><span class="big" id="ap">0</span><div class="mut">puntos de actividad</div></div>'+
-  '<div class="mut small" style="text-align:center;margin-bottom:10px">Valora la intensidad por cómo te sientes, no por el nombre del deporte.</div><button class="b" id="aok">Añadir</button>');
+  '<div class="mut small" style="text-align:center;margin-bottom:10px">Valora la intensidad por cómo te sientes, no por el nombre del deporte.</div>'+
+  '<label style="display:flex;gap:10px;align-items:center;color:var(--ink);font-size:15px;margin:0 0 12px"><input type="checkbox" id="as" checked style="width:auto"> Sumar estos puntos a mis puntos de hoy</label><button class="b" id="aok">Añadir</button>');
  function pts(){return puntosActividad(kg,num($('#am',el).value)||0,inten);}
  function upd(){$('#ap',el).textContent=pts();}
  $('#ad',el).onclick=function(e){var b=e.target.closest('button');if(!b)return;dep=DEPORTES[+b.dataset.d];[].forEach.call(this.children,function(x){x.classList.toggle('on',x===b);});$('#an',el).classList.toggle('hide',dep!=='Otra');};
@@ -482,7 +486,7 @@ function actModal(){var kg=num(S.perfil.peso),dep=DEPORTES[0],inten='M';
  $('#am',el).oninput=upd;upd();
  $('#aok',el).onclick=function(){var m=num($('#am',el).value)||0,p=pts(),n=dep==='Otra'?($('#an',el).value.trim()||'Actividad'):dep;
   if(!kg){toast('Falta tu peso');return;}if(p<=0){toast('Mínimo 10 minutos');return;}
-  (S.actividad[fecha]=S.actividad[fecha]||[]).push({id:uid(),n:n,m:m,i:inten,kg:kg,p:p});save();closeModal();toast('Actividad añadida ✓');render();};}
+  (S.actividad[fecha]=S.actividad[fecha]||[]).push({id:uid(),n:n,m:m,i:inten,kg:kg,p:p,s:$('#as',el).checked?1:0});save();closeModal();toast('Actividad añadida ✓');render();};}
 
 /* ---- PESO Y OBJETIVO ---- */
 function pesosOrd(){return S.pesos.slice().sort(function(a,b){return a.f<b.f?-1:1;});}
