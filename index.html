@@ -283,8 +283,8 @@ function vHoy(){var pr=presupuestoDe(fecha);var ent=S.diario[fecha]||[];var tot=
  return h;}
 function bHoy(){
  $('#dprev').onclick=function(){fecha=addDays(fecha,-1);render();};$('#dnext').onclick=function(){fecha=addDays(fecha,1);render();};
- $('#main').onclick=function(e){var a=e.target.closest('[data-add]'),d=e.target.closest('[data-del]'),aa=e.target.closest('[data-actadd]'),ax=e.target.closest('[data-actdel]'),at=e.target.closest('[data-acttog]');
-  if(at){var L=S.actividad[fecha]||[];L.forEach(function(x){if(x.id===at.dataset.acttog)x.s=x.s===0?1:0;});save();render();return;}
+ $('#main').onclick=function(e){var a=e.target.closest('[data-add]'),d=e.target.closest('[data-del]'),aa=e.target.closest('[data-actadd]'),ax=e.target.closest('[data-actdel]');
+  if(e.target.closest('[data-actsuma]')){S.actSuma[fecha]=S.actSuma[fecha]===false;save();render();return;}
   if(aa){actModal();return;}
   if(ax){S.actividad[fecha]=(S.actividad[fecha]||[]).filter(function(x){return x.id!==ax.dataset.actdel;});save();render();return;}
   if(a){meal=a.dataset.add;tab='ali';alSeg='buscar';render();window.scrollTo(0,0);}
@@ -460,14 +460,16 @@ function bSem(){var a=$('#wprev');if(!a)return;a.onclick=function(){semRef=addDa
 /* ---- ACTIVIDAD ---- */
 var DEPORTES=['Caminar','Ciclismo','Natación','Correr','Musculación','Pilates / Yoga','Baile / Aeróbic','Senderismo','Otra'];
 var INTENS=[['B','Suave','Respiras casi con normalidad; puedes hablar y cantar.'],['M','Moderada','Respiración más profunda; puedes hablar, pero te cuesta cantar.'],['A','Alta','Respiración rápida y profunda; solo puedes hablar en frases cortas.']];
-function actDia(f){return (S.actividad[f]||[]).reduce(function(a,e){return a+(e.s===0?0:e.p);},0);}
+function actDia(f){return S.actSuma[f]===false?0:actGanada(f);}
 function actGanada(f){return (S.actividad[f]||[]).reduce(function(a,e){return a+e.p;},0);}
 function actMap(){var o={};for(var f in S.actividad){var t=actDia(f);if(t)o[f]=t;}return o;}
-function actCard(){var ent=S.actividad[fecha]||[],t=actDia(fecha),g=actGanada(fecha);
- var h='<div class="card"><div class="row" style="margin-bottom:2px"><h2 style="margin:0">Actividad'+(t?' <span class="pill">+'+fmt(t)+'</span>':'')+'</h2><button class="b sm sec auto" data-actadd="1">+ Añadir</button></div>';
- h+=ent.map(function(e){var on=e.s!==0;return '<div class="li"><div class="t"><div>'+esc(e.n)+'</div><div class="mut small">'+fmt(e.m)+' min · '+({B:'suave',M:'moderada',A:'alta'})[e.i]+'</div></div><div class="pts"'+(on?'':' style="opacity:.45"')+'>+'+fmt(e.p)+'</div><button class="b sm '+(on?'':'sec')+' auto" data-acttog="'+e.id+'" style="width:auto">'+(on?'✓ Suma':'No suma')+'</button><button class="x" data-actdel="'+e.id+'">✕</button></div>';}).join('');
- if(!ent.length)h+='<div class="mut small">Sin actividad este día</div>';
- else if(g!==t)h+='<div class="mut small" style="margin-top:6px">Ganados '+fmt(g)+' · sumados a tus puntos '+fmt(t)+'</div>';
+function actCard(){var ent=S.actividad[fecha]||[],t=actDia(fecha),g=actGanada(fecha),on=S.actSuma[fecha]!==false;
+ var h='<div class="card"><div class="row" style="margin-bottom:2px"><h2 style="margin:0">Actividad'+(g?' <span class="pill">+'+fmt(g)+'</span>':'')+'</h2><button class="b sm sec auto" data-actadd="1">+ Añadir</button></div>';
+ h+=ent.map(function(e){return '<div class="li"><div class="t"><div>'+esc(e.n)+'</div><div class="mut small">'+fmt(e.m)+' min · '+({B:'suave',M:'moderada',A:'alta'})[e.i]+'</div></div><div class="pts">+'+fmt(e.p)+'</div><button class="x" data-actdel="'+e.id+'">✕</button></div>';}).join('');
+ if(!ent.length)return h+'<div class="mut small">Sin actividad este día</div></div>';
+ h+='<div data-actsuma="1" style="display:flex;align-items:center;gap:12px;margin-top:12px;padding:14px;border-radius:12px;cursor:pointer;background:'+(on?'var(--g2)':'#f1ede3')+';border:2px solid '+(on?'var(--g)':'#d9d3c4')+'">'+
+  '<div style="flex:1"><div style="font-size:17px;font-weight:700;color:var(--ink)">Sumar a mis puntos de hoy</div><div class="mut" style="font-size:14px;margin-top:2px">'+(on?'Sumados: +'+fmt(g)+' a tu presupuesto del día':'No sumados: +'+fmt(g)+' sin usar')+'</div></div>'+
+  '<div style="flex:0 0 64px;height:36px;border-radius:18px;position:relative;background:'+(on?'var(--g)':'#b9b2a1')+'"><i style="position:absolute;top:3px;left:'+(on?'31px':'3px')+';width:30px;height:30px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3)"></i></div></div>';
  return h+'</div>';}
 function actModal(){var kg=num(S.perfil.peso),dep=DEPORTES[0],inten='M';
  var el=modal('<h2>Añadir actividad</h2><div class="mut small">'+fechaTxt(fecha)+(kg?' · con tu peso de '+fmt(kg)+' kg':'')+'</div>'+
@@ -478,7 +480,7 @@ function actModal(){var kg=num(S.perfil.peso),dep=DEPORTES[0],inten='M';
   '<label>Intensidad</label><div class="chips" id="ai">'+INTENS.map(function(x){return '<button data-i="'+x[0]+'" class="'+(x[0]==='M'?'on':'')+'">'+x[1]+'</button>';}).join('')+'</div><div class="mut small" id="aid" style="margin-top:6px">'+INTENS[1][2]+'</div>'+
   '<div style="text-align:center;margin:14px 0 6px"><span class="big" id="ap">0</span><div class="mut">puntos de actividad</div></div>'+
   '<div class="mut small" style="text-align:center;margin-bottom:10px">Valora la intensidad por cómo te sientes, no por el nombre del deporte.</div>'+
-  '<label style="display:flex;gap:10px;align-items:center;color:var(--ink);font-size:15px;margin:0 0 12px"><input type="checkbox" id="as" checked style="width:auto"> Sumar estos puntos a mis puntos de hoy</label><button class="b" id="aok">Añadir</button>');
+  '<button class="b" id="aok">Añadir</button>');
  function pts(){return puntosActividad(kg,num($('#am',el).value)||0,inten);}
  function upd(){$('#ap',el).textContent=pts();}
  $('#ad',el).onclick=function(e){var b=e.target.closest('button');if(!b)return;dep=DEPORTES[+b.dataset.d];[].forEach.call(this.children,function(x){x.classList.toggle('on',x===b);});$('#an',el).classList.toggle('hide',dep!=='Otra');};
@@ -486,7 +488,7 @@ function actModal(){var kg=num(S.perfil.peso),dep=DEPORTES[0],inten='M';
  $('#am',el).oninput=upd;upd();
  $('#aok',el).onclick=function(){var m=num($('#am',el).value)||0,p=pts(),n=dep==='Otra'?($('#an',el).value.trim()||'Actividad'):dep;
   if(!kg){toast('Falta tu peso');return;}if(p<=0){toast('Mínimo 10 minutos');return;}
-  (S.actividad[fecha]=S.actividad[fecha]||[]).push({id:uid(),n:n,m:m,i:inten,kg:kg,p:p,s:$('#as',el).checked?1:0});save();closeModal();toast('Actividad añadida ✓');render();};}
+  (S.actividad[fecha]=S.actividad[fecha]||[]).push({id:uid(),n:n,m:m,i:inten,kg:kg,p:p});save();closeModal();toast('Actividad añadida ✓');render();};}
 
 /* ---- PESO Y OBJETIVO ---- */
 function pesosOrd(){return S.pesos.slice().sort(function(a,b){return a.f<b.f?-1:1;});}
@@ -523,7 +525,7 @@ function nuevoObjModal(){var el=modal('<h2>Nuevo objetivo</h2><label style="marg
 function migrar(){var p=S.perfil;
  if(p.objetivo==null)p.objetivo='';if(p.pesoInicial===undefined)p.pesoInicial=null;if(p.inicioObj===undefined)p.inicioObj=null;
  if(!p.modo)p.modo='perdida';if(p.avisoObj===undefined)p.avisoObj=null;
- if(!S.presuDia)S.presuDia={};if(!S.actividad)S.actividad={};if(!S.reservas)S.reservas={};
+ if(!S.presuDia)S.presuDia={};if(!S.actividad)S.actividad={};if(!S.actSuma)S.actSuma={};for(var fa in S.actividad){var la=S.actividad[fa];if(S.actSuma[fa]===undefined&&la.length&&la.every(function(x){return x.s===0;}))S.actSuma[fa]=false;}if(!S.reservas)S.reservas={};
  if(p.pesoInicial==null){var P=pesosOrd();if(P.length)p.pesoInicial=P[0].k;else if(num(p.peso))p.pesoInicial=num(p.peso);}
  congelar();save();}
 
