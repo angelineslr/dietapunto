@@ -458,7 +458,17 @@ function bSem(){var a=$('#wprev');if(!a)return;a.onclick=function(){semRef=addDa
  $('#main').onclick=function(e){var l=e.target.closest('[data-w]');if(l){semRef=l.dataset.w;render();window.scrollTo(0,0);}};}
 
 /* ---- ACTIVIDAD ---- */
-var DEPORTES=['Caminar','Ciclismo','Natación','Correr','Musculación','Pilates / Yoga','Baile / Aeróbic','Senderismo','Otra'];
+var DEPORTES=['Caminar','Ciclismo','Correr','Natación','Senderismo','Musculación','Pilates / Yoga','Baile / Aeróbic','Otra'];
+/* variantes: [nombre, MET aprox. (Compendio de Actividades Físicas)]; intensidad sugerida: <3 suave, 3-6 moderada, >6 alta */
+var VARIANTES={'Caminar':[['tranquilo',2.8],['a paso ligero',3.5],['rápido',4.3],['muy rápido',5]],
+'Ciclismo':[['de paseo',4],['moderado',8],['fuerte',10]],
+'Correr':[['suave (8 km/h)',8.3],['10 km/h',10],['rápido (12 km/h)',11.5]],
+'Natación':[['suave',6],['vigorosa',9.8]],
+'Senderismo':[['por terreno llano',5.3],['por monte',6.5],['cuesta arriba',7.3]],
+'Musculación':[['ligera',3.5],['vigorosa',6]],
+'Pilates / Yoga':[['yoga suave',2.5],['pilates',3]],
+'Baile / Aeróbic':[['baile suave',3],['aeróbic bajo impacto',5],['aeróbic alto impacto',7.3]]};
+function intenMET(m){return m<3?'B':(m<=6?'M':'A');}
 var INTENS=[['B','Suave','Respiras casi con normalidad; puedes hablar y cantar.'],['M','Moderada','Respiración más profunda; puedes hablar, pero te cuesta cantar.'],['A','Alta','Respiración rápida y profunda; solo puedes hablar en frases cortas.']];
 function actDia(f){return S.actSuma[f]===false?0:actGanada(f);}
 function actGanada(f){return (S.actividad[f]||[]).reduce(function(a,e){return a+e.p;},0);}
@@ -471,22 +481,28 @@ function actCard(){var ent=S.actividad[fecha]||[],t=actDia(fecha),g=actGanada(fe
   '<div style="flex:1"><div style="font-size:17px;font-weight:700;color:var(--ink)">Sumar a mis puntos de hoy</div><div class="mut" style="font-size:14px;margin-top:2px">'+(on?'Sumados: +'+fmt(g)+' a tu presupuesto del día':'No sumados: +'+fmt(g)+' sin usar')+'</div></div>'+
   '<div style="flex:0 0 64px;height:36px;border-radius:18px;position:relative;background:'+(on?'var(--g)':'#b9b2a1')+'"><i style="position:absolute;top:3px;left:'+(on?'31px':'3px')+';width:30px;height:30px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3)"></i></div></div>';
  return h+'</div>';}
-function actModal(){var kg=num(S.perfil.peso),dep=DEPORTES[0],inten='M';
+function actModal(){var kg=num(S.perfil.peso),dep=DEPORTES[0],vari=null,inten='M';
  var el=modal('<h2>Añadir actividad</h2><div class="mut small">'+fechaTxt(fecha)+(kg?' · con tu peso de '+fmt(kg)+' kg':'')+'</div>'+
   (kg?'':'<div class="warn">Indica tu peso en la pestaña Calculadora para calcular los puntos.</div>')+
   '<label>Actividad</label><div class="chips" id="ad">'+DEPORTES.map(function(d,i){return '<button data-d="'+i+'" class="'+(i===0?'on':'')+'">'+d+'</button>';}).join('')+'</div>'+
+  '<div class="chips" id="av" style="margin-top:8px"></div>'+
   '<input id="an" class="hide" placeholder="¿Qué actividad?" style="margin-top:8px">'+
   '<label>Minutos</label><input id="am" inputmode="numeric" value="30">'+
-  '<label>Intensidad</label><div class="chips" id="ai">'+INTENS.map(function(x){return '<button data-i="'+x[0]+'" class="'+(x[0]==='M'?'on':'')+'">'+x[1]+'</button>';}).join('')+'</div><div class="mut small" id="aid" style="margin-top:6px">'+INTENS[1][2]+'</div>'+
+  '<label>Intensidad</label><div class="chips" id="ai">'+INTENS.map(function(x){return '<button data-i="'+x[0]+'" class="'+(x[0]==='M'?'on':'')+'">'+x[1]+'</button>';}).join('')+'</div><div class="mut small" id="aid" style="margin-top:6px">'+INTENS[1][2]+'</div><div class="small" id="asug" style="margin-top:4px;color:var(--g)"></div>'+
   '<div style="text-align:center;margin:14px 0 6px"><span class="big" id="ap">0</span><div class="mut">puntos de actividad</div></div>'+
-  '<div class="mut small" style="text-align:center;margin-bottom:10px">Valora la intensidad por cómo te sientes, no por el nombre del deporte.</div>'+
+  '<div class="mut small" style="text-align:center;margin-bottom:10px">La intensidad es una sugerencia según el tipo de actividad; cámbiala según cómo te sientes. Los puntos salen de la tabla oficial (peso, minutos, intensidad).</div>'+
   '<button class="b" id="aok">Añadir</button>');
  function pts(){return puntosActividad(kg,num($('#am',el).value)||0,inten);}
  function upd(){$('#ap',el).textContent=pts();}
- $('#ad',el).onclick=function(e){var b=e.target.closest('button');if(!b)return;dep=DEPORTES[+b.dataset.d];[].forEach.call(this.children,function(x){x.classList.toggle('on',x===b);});$('#an',el).classList.toggle('hide',dep!=='Otra');};
- $('#ai',el).onclick=function(e){var b=e.target.closest('button');if(!b)return;inten=b.dataset.i;[].forEach.call(this.children,function(x){x.classList.toggle('on',x===b);});$('#aid',el).textContent=INTENS.filter(function(x){return x[0]===inten;})[0][2];upd();};
- $('#am',el).oninput=upd;upd();
- $('#aok',el).onclick=function(){var m=num($('#am',el).value)||0,p=pts(),n=dep==='Otra'?($('#an',el).value.trim()||'Actividad'):dep;
+ function setI(k){inten=k;[].forEach.call($('#ai',el).children,function(x){x.classList.toggle('on',x.dataset.i===k);});$('#aid',el).textContent=INTENS.filter(function(x){return x[0]===k;})[0][2];}
+ function sug(){var t=$('#asug',el);if(!vari){t.textContent='';return;}var k=intenMET(vari[1]);t.textContent=inten===k?'Intensidad sugerida: '+INTENS.filter(function(x){return x[0]===k;})[0][1]+' (≈'+String(vari[1]).replace('.',',')+' MET)':'Sugerida: '+INTENS.filter(function(x){return x[0]===k;})[0][1]+' (≈'+String(vari[1]).replace('.',',')+' MET). Tú has elegido otra.';}
+ function pintaVar(){var v=VARIANTES[dep]||[],c=$('#av',el);c.classList.toggle('hide',!v.length);c.innerHTML=v.map(function(x,i){return '<button data-v="'+i+'" class="'+(vari&&vari===x?'on':'')+'">'+x[0]+'</button>';}).join('');}
+ function elige(i){var v=VARIANTES[dep];vari=v?v[i]:null;if(vari)setI(intenMET(vari[1]));pintaVar();sug();upd();}
+ $('#ad',el).onclick=function(e){var b=e.target.closest('button');if(!b)return;dep=DEPORTES[+b.dataset.d];vari=null;[].forEach.call(this.children,function(x){x.classList.toggle('on',x===b);});$('#an',el).classList.toggle('hide',dep!=='Otra');pintaVar();if(VARIANTES[dep])elige(Math.min(1,VARIANTES[dep].length-1));else{sug();}};
+ $('#av',el).onclick=function(e){var b=e.target.closest('button');if(!b)return;elige(+b.dataset.v);};
+ $('#ai',el).onclick=function(e){var b=e.target.closest('button');if(!b)return;setI(b.dataset.i);sug();upd();};
+ $('#am',el).oninput=upd;pintaVar();elige(1);
+ $('#aok',el).onclick=function(){var m=num($('#am',el).value)||0,p=pts(),n=dep==='Otra'?($('#an',el).value.trim()||'Actividad'):(vari?dep+' '+vari[0]:dep);
   if(!kg){toast('Falta tu peso');return;}if(p<=0){toast('Mínimo 10 minutos');return;}
   (S.actividad[fecha]=S.actividad[fecha]||[]).push({id:uid(),n:n,m:m,i:inten,kg:kg,p:p});save();closeModal();toast('Actividad añadida ✓');render();};}
 
